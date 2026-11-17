@@ -3,6 +3,7 @@
 Trang web quản trị CrowdSec đa năng với giao diện trực quan, hiện đại, hỗ trợ Dark/Light Mode và Menu 3 gạch điều hướng giữa các phân hệ:
 1. **Tab 1: Quyết định chặn (Decisions)**: Quản lý danh sách IP đang bị cấm (Bans).
 2. **Tab 2: Quản lý Scenarios (Kịch bản)**: Xem, thêm, sửa, bật/tắt và xóa kịch bản phát hiện trong `/etc/crowdsec/scenarios/`.
+3. **Tab 3: Theo dõi tình trạng hệ thống**: Xem tình trạng CPU, RAM và các card mạng
 
 ---
 
