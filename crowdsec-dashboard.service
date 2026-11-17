@@ -1,0 +1,18 @@
+[Unit]
+Description=CrowdSec Decision Manager Web Dashboard
+After=network.target crowdsec.service
+Wants=crowdsec.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/viettung/crowdsec-dashboard
+ExecStart=/usr/bin/python3 /home/viettung/crowdsec-dashboard/app.py --port 5000 --host 0.0.0.0
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

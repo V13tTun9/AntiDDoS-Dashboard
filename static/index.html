@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrowdSec Manager - Decisions & Scenarios</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <script>
+    // Khởi tạo theme ngay trước khi render để chống chớp giao diện (FOUC)
+    (function () {
+      const savedTheme = localStorage.getItem("crowdsec_theme");
+      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const theme = savedTheme || (systemDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+</head>
+
+<body>
+  <!-- Sidebar Backdrop & Drawer (Menu 3 gạch) -->
+  <div class="sidebar-backdrop hidden" id="sidebarBackdrop"></div>
+  <aside class="sidebar-drawer" id="sidebarDrawer">
+    <div class="sidebar-header">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <path d="m9 12 2 2 4-4"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="sidebar-brand-title">CrowdSec Console</div>
+          <div class="sidebar-brand-sub">Quản trị Hệ thống</div>
+        </div>
+      </div>
+      <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Đóng menu">&times;</button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">DANH MỤC QUẢN TRỊ</div>
+
+      <!-- Tab 1: Decisions -->
+      <button class="nav-tab-item active" id="tabNavDecisions" data-tab="tabDecisionsView">
+        <span class="tab-item-icon">🛡️</span>
+        <div class="tab-item-info">
+          <span class="tab-item-title">Danh Sách Chặn (Decisions)</span>
+          <span class="tab-item-desc">cscli decisions list</span>
+        </div>
+        <span class="tab-item-badge" id="badgeDecisionsCount">0</span>
+      </button>
+
+      <!-- Tab 2: Scenarios -->
+      <button class="nav-tab-item" id="tabNavScenarios" data-tab="tabScenariosView">
+        <span class="tab-item-icon">📜</span>
+        <div class="tab-item-info">
+          <span class="tab-item-title">Quản Lý Scenarios</span>
+          <span class="tab-item-desc">cscli scenarios list</span>
+        </div>
+        <span class="tab-item-badge" id="badgeScenariosCount">0</span>
+      </button>
+
+      <!-- Tab 3: System Metrics -->
+      <button class="nav-tab-item" id="tabNavSystem" data-tab="tabSystemView">
+        <span class="tab-item-icon">📊</span>
+        <div class="tab-item-info">
+          <span class="tab-item-title">Giám Sát Hệ Thống</span>
+          <span class="tab-item-desc">CPU, RAM, Lưu lượng mạng realtime</span>
+        </div>
+        <span class="tab-item-badge badge-live" id="badgeSystemStatus"><span class="live-dot-mini"></span>LIVE</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-info-card">
+        <div class="info-row">
+          <span class="info-label">CrowdSec API:</span>
+          <span class="info-val">127.0.0.1:8080</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Scenarios Dir:</span>
+          <span class="info-val font-mono">/etc/crowdsec/scenarios</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <!-- Menu 3 gạch Hamburger Button -->
+      <button class="hamburger-btn" id="hamburgerBtn" title="Mở danh mục điều hướng" aria-label="Mở menu">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.2" fill="none"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2" fill="none"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <path d="m9 12 2 2 4-4"></path>
+        </svg>
+      </div>
+
+      <div>
+        <h1 class="brand-title" id="pageTitle">CrowdSec Manager</h1>
+        <p class="brand-subtitle" id="pageSubtitle">Quản trị danh sách IP bị chặn & Kịch bản bảo mật</p>
+      </div>
+    </div>
+
+    <div class="nav-status">
+      <div id="rootBadge" class="status-pill status-unknown">
+        <span class="status-dot"></span>
+        <span id="rootBadgeText">Đang kiểm tra quyền...</span>
+      </div>
+
+      <!-- Theme Toggle (Dark / Light) -->
+      <button class="theme-toggle-btn" id="themeToggleBtn" title="Chuyển chế độ Sáng / Tối"
+        aria-label="Chuyển chế độ Giao diện">
+        <svg class="theme-icon sun-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor"
+          stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg class="theme-icon moon-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor"
+          stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <span class="theme-toggle-text" id="themeToggleText">Chế độ tối</span>
+      </button>
+
+      <!-- Dynamic Action Button (Thay đổi theo Tab) -->
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+    <!-- Permission Alert -->
+    <div id="permissionWarning" class="alert-box alert-warning hidden">
+      <div class="alert-icon">⚠️</div>
+      <div class="alert-content">
+        <strong>Cảnh báo phân quyền:</strong> Web server đang chạy dưới quyền người dùng thông thường nên không thể đọc
+        cấu hình <code>/etc/crowdsec/config.yaml</code>.
+        <br>Để các lệnh <code>cscli</code> hoạt động trực tiếp, vui lòng chạy server bằng lệnh:
+        <div class="code-snippet"><code>sudo python3 /home/viettung/crowdsec-dashboard/app.py</code></div>
+        <div style="margin-top: 0.6rem;">
+          <button class="btn btn-secondary btn-sm" id="enableDemoBtn">
+            <span>🎮 Bật chế độ Demo để dùng thử giao diện</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TAB 1: DECISIONS VIEW (QUYẾT ĐỊNH CHẶN IP)                      -->
+    <!-- ============================================================== -->
+    <div id="tabDecisionsView" class="tab-view active">
+      <!-- Statistics Cards -->
+      <section class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Tổng IP đang chặn</span>
+          </div>
+          <div class="stat-value" id="statTotalBans">0</div>
+          <div class="stat-desc">Đang hiệu lực trong CrowdSec LAPI</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Quyết định Nội bộ (Local)</span>
+          </div>
+          <div class="stat-value" id="statLocalBans">0</div>
+          <div class="stat-desc">Sinh bởi Suricata, Scenarios hoặc cscli</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Quyết định Cộng đồng (CAPI)</span>
+          </div>
+          <div class="stat-value" id="statCapiBans">0</div>
+          <div class="stat-desc">Dữ liệu chia sẻ từ mạng lưới CrowdSec</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Cập nhật lần cuối</span>
+          </div>
+          <div class="stat-value text-sm" id="statLastUpdated">Chưa cập nhật</div>
+          <div class="stat-desc" id="statRefreshInterval">Tự động làm mới: 10 giây</div>
+        </div>
+      </section>
+
+      <!-- Decisions Toolbar -->
+      <section class="toolbar">
+        <div class="search-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
+            fill="none">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Tìm kiếm nhanh IP, lý do, quốc gia, AS..."
+            autocomplete="off">
+          <button id="clearSearchBtn" class="clear-btn hidden">&times;</button>
+        </div>
+
+        <div class="toolbar-actions">
+          <label class="checkbox-label" title="Tương tự thêm cờ -a vào lệnh cscli decisions list">
+            <input type="checkbox" id="includeAllCheckbox">
+            <span>Bao gồm Central API (<code>-a</code>)</span>
+          </label>
+
+          <div class="select-group">
+            <span class="select-label">Tự làm mới:</span>
+            <select id="autoRefreshSelect" class="form-select">
+              <option value="0">Tắt</option>
+              <option value="5">5 giây</option>
+              <option value="10" selected>10 giây</option>
+              <option value="30">30 giây</option>
+            </select>
+          </div>
+
+          <button class="btn btn-secondary" id="refreshBtn" title="Làm mới danh sách ngay lập tức">
+            <svg id="refreshIcon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5"
+              fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Làm mới</span>
+          </button>
+
+          <button class="btn btn-primary" id="openAddModalBtn">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span id="openAddModalText">Thêm IP Chặn</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Decisions Table Card -->
+      <section class="table-card">
+        <div class="table-header-info">
+          <div class="table-title">
+            <span>Danh sách quyết định chặn</span>
+            <span class="badge" id="rowCountBadge">0 mục</span>
+          </div>
+          <div class="cli-hint">
+            Lệnh CLI tương đương: <code id="cliCommandHint">cscli decisions list</code>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" id="decisionsTable">
+            <thead>
+              <tr>
+                <th data-sort="id">ID</th>
+                <th data-sort="source">Source</th>
+                <th data-sort="scope_value">Scope:Value</th>
+                <th data-sort="reason">Reason</th>
+                <th data-sort="action">Action</th>
+                <th data-sort="country">Country</th>
+                <th data-sort="as">AS</th>
+                <th data-sort="events">Events</th>
+                <th data-sort="expiration">Expiration</th>
+                <th data-sort="alert_id">Alert ID</th>
+                <th class="text-center">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="decisionsTableBody">
+              <tr class="loading-row">
+                <td colspan="11">
+                  <div class="loading-spinner"></div>
+                  <div class="loading-text">Đang tải danh sách IP bị chặn từ CrowdSec...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <div id="filterResultText">Hiển thị tất cả quyết định</div>
+          <div class="table-legend">
+            <span><span class="legend-dot red"></span> Ban</span>
+            <span><span class="legend-dot yellow"></span> Captcha</span>
+            <span><span class="legend-dot purple"></span> Local</span>
+            <span><span class="legend-dot blue"></span> CAPI</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TAB 2: SCENARIOS VIEW (QUẢN LÝ KỊCH BẢN CROWDSEC)               -->
+    <!-- ============================================================== -->
+    <div id="tabScenariosView" class="tab-view hidden">
+      <!-- Scenarios Statistics Grid -->
+      <section class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Tổng số Scenarios</span>
+          </div>
+          <div class="stat-value" id="statScenariosTotal">0</div>
+          <div class="stat-desc">Kịch bản đã nạp trong CrowdSec</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Đang Bật (Enabled)</span>
+          </div>
+          <div class="stat-value" id="statScenariosEnabled">0</div>
+          <div class="stat-desc">Kịch bản đang hoạt động giám sát</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Đang Tắt (Disabled)</span>
+          </div>
+          <div class="stat-value" id="statScenariosDisabled">0</div>
+          <div class="stat-desc">Kịch bản tạm ngưng kích hoạt</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-meta">
+            <span class="stat-label">Tự Tạo (Local)</span>
+          </div>
+          <div class="stat-value" id="statScenariosLocal">0</div>
+          <div class="stat-desc">File YAML trong /etc/crowdsec/scenarios/</div>
+        </div>
+      </section>
+
+      <!-- Scenarios Toolbar -->
+      <section class="toolbar">
+        <div class="search-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2"
+            fill="none">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="scenarioSearchInput" placeholder="Tìm kiếm scenario (tên kịch bản, mô tả, file)..."
+            autocomplete="off">
+          <button id="clearScenarioSearchBtn" class="clear-btn hidden">&times;</button>
+        </div>
+
+        <div class="toolbar-actions">
+          <div class="select-group">
+            <span class="select-label">Lọc:</span>
+            <select id="scenarioFilterSelect" class="form-select">
+              <option value="all">Tất cả scenarios</option>
+              <option value="enabled" selected>Chỉ đang Bật (Enabled)</option>
+              <option value="disabled">Chỉ đang Tắt (Disabled)</option>
+              <option value="local">Chỉ kịch bản Tùy chỉnh (Local)</option>
+              <option value="hub">Chỉ kịch bản Hub</option>
+            </select>
+          </div>
+
+          <label class="checkbox-label" title="Liệt kê cả các kịch bản Hub chưa cài đặt (cscli scenarios list -a)">
+            <input type="checkbox" id="scenarioIncludeAllCheckbox">
+            <span>Bao gồm Hub chưa cài (<code>-a</code>)</span>
+          </label>
+
+          <button class="btn btn-secondary" id="refreshScenariosBtn" title="Làm mới danh sách scenarios">
+            <svg id="refreshScenariosIcon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor"
+              stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            <span>Làm mới</span>
+          </button>
+
+          <button class="btn btn-primary" id="openAddScenarioBtn">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Thêm Scenario Mới</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Scenarios Table Card -->
+      <section class="table-card">
+        <div class="table-header-info">
+          <div class="table-title">
+            <span>Danh sách Scenarios (Kịch bản phát hiện)</span>
+            <span class="badge" id="scenariosCountBadge">0 mục</span>
+          </div>
+          <div class="cli-hint">
+            Lệnh CLI tương đương: <code id="cliScenarioCommandHint">cscli scenarios list</code>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table" id="scenariosTable">
+            <thead>
+              <tr>
+                <th data-sort-sc="name">Tên Scenario</th>
+                <th data-sort-sc="type">Loại</th>
+                <th data-sort-sc="status">Trạng thái</th>
+                <th data-sort-sc="description">Mô tả kịch bản</th>
+                <th data-sort-sc="path">Đường dẫn file (Local Path)</th>
+                <th class="text-center" style="min-width: 170px;">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="scenariosTableBody">
+              <tr class="loading-row">
+                <td colspan="6">
+                  <div class="loading-spinner"></div>
+                  <div class="loading-text">Đang nạp danh sách scenarios từ CrowdSec...</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <div id="scenariosFilterResultText">Hiển thị danh sách scenarios</div>
+          <div class="table-legend">
+            <span><span class="legend-dot green"></span> Đang Bật</span>
+            <span><span class="legend-dot red"></span> Đang Tắt</span>
+            <span><span class="legend-dot purple"></span> Local Tùy Chỉnh</span>
+            <span><span class="legend-dot blue"></span> Hub Chính Thức</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- TAB 3: SYSTEM MONITOR VIEW (GIÁM SÁT REALTIME CPU, RAM, MẠNG)   -->
+    <!-- ============================================================== -->
+    <div id="tabSystemView" class="tab-view hidden">
+      <!-- System Overview Banner / Toolbar -->
+      <section class="system-toolbar-card">
+        <div class="system-meta-row">
+          <div class="system-host-info">
+            <span class="system-status-indicator">
+              <span class="live-pulse-dot"></span>
+              <span id="sysLiveStatusText">Đang theo dõi trực tiếp</span>
+            </span>
+            <span class="system-info-tag font-mono" id="sysHostText">antiddos (Linux)</span>
+            <span class="system-info-tag" id="sysUptimeText">Uptime: --</span>
+          </div>
+
+          <div class="system-controls">
+            <div class="interval-selector-wrap">
+              <label for="sysIfaceSelect">Card mạng:</label>
+              <select id="sysIfaceSelect" class="form-select">
+                <option value="all" selected>Tất cả (Tổng hợp)</option>
+              </select>
+            </div>
+            <div class="interval-selector-wrap">
+              <label for="sysRefreshIntervalSelect">Tần suất:</label>
+              <select id="sysRefreshIntervalSelect" class="form-select">
+                <option value="1000">1 giây</option>
+                <option value="2000" selected>2 giây</option>
+                <option value="5000">5 giây</option>
+                <option value="60000">1 phút</option>
+                <option value="300000">5 phút</option>
+              </select>
+            </div>
+            <button class="btn btn-secondary" id="sysPauseResumeBtn" title="Tạm dừng / Tiếp tục cập nhật biểu đồ">
+              <span id="sysPauseResumeText">Tạm dừng</span>
+            </button>
+
+            <button class="btn btn-secondary" id="sysRefreshOnceBtn" title="Làm mới ngay">
+              <span>Làm mới</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Realtime Metric Stats Grid (4 Cards - Minimalist & Clear) -->
+      <section class="stats-grid system-stats-grid">
+        <!-- Card 1: CPU -->
+        <div class="stat-card metric-card">
+          <div class="metric-card-top">
+            <div class="metric-title-group">
+              <span class="metric-title-clean">Tải CPU</span>
+            </div>
+            <span class="metric-pill" id="sysCpuCoresBadge">2 nhân</span>
+          </div>
+          <div class="metric-hero-row">
+            <span class="metric-hero-val text-cpu" id="sysCpuVal">0%</span>
+            <span class="metric-sub-label" id="sysCpuTrend">Tải 1m: 0.00</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-inner cpu-bar" id="sysCpuBar" style="width: 0%"></div>
+          </div>
+          <div class="metric-clean-meta">
+            <div class="clean-meta-row">
+              <span class="text-secondary" id="sysCpuModelBrief">AMD Ryzen 5</span>
+              <span class="text-muted font-mono" id="sysCpuCoresBrief">c0: 0% • c1: 0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: RAM Memory -->
+        <div class="stat-card metric-card">
+          <div class="metric-card-top">
+            <div class="metric-title-group">
+              <span class="metric-title-clean">Bộ Nhớ RAM</span>
+            </div>
+            <span class="metric-pill" id="sysRamTotalBadge">3.8 GB</span>
+          </div>
+          <div class="metric-hero-row">
+            <span class="metric-hero-val text-ram" id="sysRamVal">0%</span>
+            <span class="metric-sub-label" id="sysRamRatio">0 / 0 GB</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-inner ram-bar" id="sysRamBar" style="width: 0%"></div>
+          </div>
+          <div class="metric-clean-meta">
+            <div class="clean-meta-row">
+              <span class="text-secondary" id="sysRamDetailText">Khả dụng: 0 GB</span>
+              <span class="text-muted font-mono" id="sysSwapBrief">Swap: 0 MB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Network RX Inbound -->
+        <!-- <div class="stat-card metric-card">
+          <div class="metric-card-top">
+            <div class="metric-title-group">
+              <span class="metric-title-clean">Tải Về (RX)</span>
+            </div>
+            <span class="metric-pill" id="sysPrimaryIfaceRx">ens33</span>
+          </div>
+          <div class="metric-hero-row">
+            <span class="metric-hero-val text-rx" id="sysRxRateVal">0 B/s</span>
+            <span class="metric-sub-label" id="sysRxPktsBrief">0 gói/s</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-inner rx-bar" id="sysRxBar" style="width: 10%"></div>
+          </div>
+          <div class="metric-clean-meta">
+            <div class="clean-meta-row">
+              <span class="text-secondary">Tổng đã tải:</span>
+              <span class="text-success font-mono font-bold" id="sysRxTotalVal">0 B</span>
+            </div>
+          </div>
+        </div> -->
+
+        <!-- Card 4: Network TX Outbound -->
+        <!-- <div class="stat-card metric-card">
+          <div class="metric-card-top">
+            <div class="metric-title-group">
+              <span class="metric-title-clean">Tải Lên (TX)</span>
+            </div>
+            <span class="metric-pill" id="sysPrimaryIfaceTx">ens33</span>
+          </div>
+          <div class="metric-hero-row">
+            <span class="metric-hero-val text-tx" id="sysTxRateVal">0 B/s</span>
+            <span class="metric-sub-label" id="sysTxPktsBrief">0 gói/s</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-inner tx-bar" id="sysTxBar" style="width: 10%"></div>
+          </div>
+          <div class="metric-clean-meta">
+            <div class="clean-meta-row">
+              <span class="text-secondary">Tổng đã gửi:</span>
+              <span class="text-warning font-mono font-bold" id="sysTxTotalVal">0 B</span>
+            </div>
+          </div>
+        </div> -->
+      </section>
+
+      <!-- Realtime Interactive Charts Section -->
+      <section class="charts-section-grid">
+        <!-- Chart 1: CPU & RAM -->
+        <div class="chart-container-card">
+          <div class="chart-card-header">
+            <div class="chart-header-left">
+              <h3 class="chart-title">Tài Nguyên CPU & RAM (%)</h3>
+              <p class="chart-subtitle">Lịch sử dao động 60 giây gần nhất</p>
+            </div>
+            <div class="chart-legend-box">
+              <div class="chart-legend-item">
+                <span class="legend-color-box color-cpu"></span>
+                <span class="legend-label">CPU:</span>
+                <span class="legend-val font-mono" id="chartLegendCpu">0%</span>
+              </div>
+              <div class="chart-legend-item">
+                <span class="legend-color-box color-ram"></span>
+                <span class="legend-label">RAM:</span>
+                <span class="legend-val font-mono" id="chartLegendRam">0%</span>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-wrapper">
+            <canvas id="cpuRamCanvas" height="220"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Network Bandwidth -->
+        <div class="chart-container-card">
+          <div class="chart-card-header">
+            <div class="chart-header-left">
+              <h3 class="chart-title">Băng Thông Mạng (RX / TX)</h3>
+              <p class="chart-subtitle">Lưu lượng truyền nhận theo thời gian</p>
+            </div>
+            <div class="chart-legend-box">
+              <div class="chart-legend-item">
+                <span class="legend-color-box color-rx"></span>
+                <span class="legend-label">Tải về:</span>
+                <span class="legend-val font-mono" id="chartLegendRx">0 B/s</span>
+              </div>
+              <div class="chart-legend-item">
+                <span class="legend-color-box color-tx"></span>
+                <span class="legend-label">Tải lên:</span>
+                <span class="legend-val font-mono" id="chartLegendTx">0 B/s</span>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-wrapper">
+            <canvas id="networkCanvas" height="220"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- Network Interfaces Table Card -->
+      <section class="table-section">
+        <div class="table-card">
+
+          <div class="table-wrapper">
+            <table class="data-table" id="netInterfacesTable">
+              <thead>
+                <tr>
+                  <th>Card Mạng</th>
+                  <th>Phân Loại</th>
+                  <th class="text-right">Tốc Độ Tải Về (RX)</th>
+                  <th class="text-right">Tốc Độ Tải Lên (TX)</th>
+                  <th class="text-right">Tổng Đã Tải Về</th>
+                  <th class="text-right">Tổng Đã Gửi Đi</th>
+                  <th class="text-center">Gói Tin (RX / TX)</th>
+                  <th class="text-center">Lỗi / Rớt Gói</th>
+                </tr>
+              </thead>
+              <tbody id="netInterfacesTableBody">
+                <tr>
+                  <td colspan="8" class="text-center py-4">Đang tải thông tin mạng...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============================================================== -->
+  <!-- MODALS                                                         -->
+  <!-- ============================================================== -->
+
+  <!-- MODAL: THÊM IP CHẶN (cscli decisions add) -->
+  <div class="modal-backdrop hidden" id="addModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div>
+            <h3 class="modal-title">Thêm Quyết Định Chặn IP</h3>
+            <!-- <p class="modal-subtitle">Tương tự câu lệnh: <code>cscli decisions add &lt;IP&gt;</code></p> -->
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeAddModalBtn">&times;</button>
+      </div>
+
+      <form id="addDecisionForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="targetInput">
+              Địa chỉ IP hoặc Dải mạng CIDR <span class="required">*</span>
+            </label>
+            <input type="text" id="targetInput" class="form-control"
+              placeholder="Ví dụ: 172.10.10.14 hoặc 192.168.1.0/24" required autocomplete="off">
+            <div class="form-help">Hỗ trợ địa chỉ IPv4 đơn lẻ hoặc dải mạng CIDR (Subnet).</div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label" for="durationInput">Thời hạn chặn (Duration)</label>
+              <input type="text" id="durationInput" class="form-control" value="4h" placeholder="vd: 4h, 24h, 7d">
+              <div class="quick-chips" id="durationChips">
+                <button type="button" class="chip" data-val="1h">1h</button>
+                <button type="button" class="chip active" data-val="4h">4h</button>
+                <button type="button" class="chip" data-val="24h">24h</button>
+                <button type="button" class="chip" data-val="7d">7d</button>
+                <button type="button" class="chip" data-val="30d">30d</button>
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label class="form-label" for="typeSelect">Loại hành động (Action)</label>
+              <select id="typeSelect" class="form-control">
+                <option value="ban" selected>ban (Chặn truy cập)</option>
+                <option value="captcha">captcha (Xác minh)</option>
+                <option value="throttle">throttle (Giới hạn băng thông)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reasonInput">Lý do / Scenario</label>
+            <input type="text" id="reasonInput" class="form-control" value="manual-ban-web"
+              placeholder="Ví dụ: viettung/suricata-l3-l4-flood hoặc manual ban">
+          </div>
+
+          <div class="cli-preview">
+            <div class="cli-preview-title">Lệnh CLI sẽ thực thi:</div>
+            <code id="cliAddPreview">cscli decisions add -i 172.10.10.14 -d 4h -R "manual-ban-web" -t ban</code>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelAddBtn">Hủy bỏ</button>
+          <button type="submit" class="btn btn-primary" id="submitAddBtn">
+            <span class="btn-text">Xác nhận chặn</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: XÁC NHẬN XÓA IP (cscli decisions delete) -->
+  <div class="modal-backdrop hidden" id="deleteModal">
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon delete-icon">🗑️</div>
+          <div>
+            <h3 class="modal-title">Gỡ Chặn IP Khỏi CrowdSec</h3>
+            <p class="modal-subtitle">Xóa quyết định xử lý</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeDeleteModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="delete-warning-text">
+          Bạn có chắc chắn muốn xóa IP này khỏi danh sách chặn không?
+        </p>
+
+        <div class="delete-target-card">
+          <div class="delete-field">
+            <span class="field-name">Mục tiêu:</span>
+            <span class="field-val highlight" id="deleteTargetValue">-</span>
+          </div>
+          <div class="delete-field">
+            <span class="field-name">Lý do chặn:</span>
+            <span class="field-val" id="deleteTargetReason">-</span>
+          </div>
+          <div class="delete-field">
+            <span class="field-name">Decision ID:</span>
+            <span class="field-val" id="deleteTargetId">-</span>
+          </div>
+        </div>
+
+        <div class="cli-preview">
+          <div class="cli-preview-title">Lệnh CLI sẽ thực thi:</div>
+          <code id="cliDeletePreview">cscli decisions delete -i &lt;IP&gt;</code>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Hủy bỏ</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+          <span class="btn-text">Xóa IP ngay</span>
+          <div class="btn-spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: THÊM SCENARIO MỚI (Lưu vào /etc/crowdsec/scenarios/<tên file>.yml) -->
+  <div class="modal-backdrop hidden" id="addScenarioModal">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon add-icon">📜</div>
+          <div>
+            <h3 class="modal-title">Thêm Scenario Mới</h3>
+            <p class="modal-subtitle">Tạo kịch bản phát hiện và lưu vào <code>/etc/crowdsec/scenarios/</code></p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeAddScenarioModalBtn">&times;</button>
+      </div>
+
+      <form id="addScenarioForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="scenarioFilenameInput">
+              Tên file kịch bản (.yml) <span class="required">*</span>
+            </label>
+            <input type="text" id="scenarioFilenameInput" class="form-control font-mono"
+              placeholder="Ví dụ: vt-suricata-syn-flood.yml hoặc my-rule.yml" required autocomplete="off">
+            <div class="form-help">
+              Đường dẫn lưu thực tế: <code class="highlight-path"
+                id="previewSavePath">/etc/crowdsec/scenarios/my-rule.yml</code>
+            </div>
+          </div>
+
+          <!-- Mẫu kịch bản có sẵn -->
+          <div class="form-group">
+            <div class="template-header">
+              <label class="form-label" style="margin-bottom:0;">Nội dung cấu hình YAML <span
+                  class="required">*</span></label>
+              <div class="template-chips">
+                <span class="template-chips-label">Nạp mẫu chuẩn:</span>
+                <button type="button" class="chip template-btn" data-template="leaky">Leaky Bucket (DDoS/Flood)</button>
+                <button type="button" class="chip template-btn" data-template="trigger">Trigger (Phát hiện
+                  ngay)</button>
+                <button type="button" class="chip template-btn" data-template="counter">Counter (Đếm tần suất)</button>
+              </div>
+            </div>
+
+            <textarea id="scenarioContentInput" class="code-editor-textarea font-mono" rows="14" required
+              spellcheck="false" placeholder="Nhập nội dung YAML cho kịch bản..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelAddScenarioBtn">Hủy bỏ</button>
+          <button type="submit" class="btn btn-primary" id="submitAddScenarioBtn">
+            <span class="btn-text">Lưu Scenario (.yml)</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CHỈNH SỬA SCENARIO (Edit & Save) -->
+  <div class="modal-backdrop hidden" id="editScenarioModal">
+    <div class="modal-dialog modal-dialog-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon" style="background-color:rgba(59,130,246,0.15);color:#3b82f6;">✏️</div>
+          <div>
+            <h3 class="modal-title" id="editModalTitle">Chỉnh Sửa Scenario</h3>
+            <p class="modal-subtitle font-mono" id="editModalSubtitle">/etc/crowdsec/scenarios/...</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeEditScenarioModalBtn">&times;</button>
+      </div>
+
+      <form id="editScenarioForm">
+        <div class="modal-body">
+          <div class="edit-meta-banner">
+            <div>
+              <span>Kịch bản: <strong id="editScenarioNameText">-</strong></span>
+              <span class="bullet">•</span>
+              <span id="editScenarioTypeText">Local Custom</span>
+            </div>
+            <div class="edit-meta-note">💡 Tự động tạo bản sao lưu (.bak) khi bạn nhấn lưu</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0;">
+            <textarea id="editScenarioContentInput" class="code-editor-textarea font-mono" rows="16" required
+              spellcheck="false"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelEditScenarioBtn">Hủy bỏ</button>
+          <button type="submit" class="btn btn-primary" id="submitEditScenarioBtn">
+            <span class="btn-text">Lưu Thay Đổi</span>
+            <div class="btn-spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: XÁC NHẬN XÓA SCENARIO -->
+  <div class="modal-backdrop hidden" id="deleteScenarioModal">
+    <div class="modal-dialog modal-dialog-sm">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon delete-icon">🗑️</div>
+          <div>
+            <h3 class="modal-title">Xóa Kịch Bản (Scenario)</h3>
+            <p class="modal-subtitle">Gỡ bỏ khỏi hệ thống CrowdSec</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="closeDeleteScenarioModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="delete-warning-text">
+          Bạn có chắc chắn muốn xóa kịch bản này không?
+        </p>
+
+        <div class="delete-target-card">
+          <div class="delete-field">
+            <span class="field-name">Tên Scenario:</span>
+            <span class="field-val highlight" id="deleteScenarioName">-</span>
+          </div>
+          <div class="delete-field">
+            <span class="field-name">Loại:</span>
+            <span class="field-val" id="deleteScenarioType">-</span>
+          </div>
+          <div class="delete-field">
+            <span class="field-name">Đường dẫn:</span>
+            <span class="field-val font-mono" style="font-size:0.75rem;" id="deleteScenarioPath">-</span>
+          </div>
+        </div>
+
+        <div class="cli-preview">
+          <div class="cli-preview-title">Hành động thực thi:</div>
+          <code id="cliScenarioDeletePreview">cscli scenarios remove &lt;scenario&gt;</code>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelDeleteScenarioBtn">Hủy bỏ</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteScenarioBtn">
+          <span class="btn-text">Xác Nhận Xóa</span>
+          <div class="btn-spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>
